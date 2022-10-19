@@ -62,7 +62,7 @@ fn main() -> anyhow::Result<()> {
     convert_taxonomy(&mut frontmatter_value, "author", "author")?;
     convert_taxonomy(&mut frontmatter_value, "categories", "category")?;
 
-    let toml_frontmatter = toml::to_string(&dbg!(frontmatter_value))?;
+    let toml_frontmatter = toml::to_string(&frontmatter_value)?;
 
     println!("+++\n{toml_frontmatter}+++\n{markdown}");
 
