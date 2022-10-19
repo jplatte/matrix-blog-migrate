@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::bail;
+use heck::ToKebabCase;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use toml::value::Table;
@@ -22,20 +23,14 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
+    assert!(input_path.ends_with(".mdx"));
+
     let (date, mut updated) = git_timestamps(input_path)?;
     let mut date = Some(date);
     let (yaml_frontmatter, markdown) = read_file_contents(input_path)?;
 
     let mut frontmatter_value: IndexMap<String, toml::Value> =
         serde_yaml::from_str(&yaml_frontmatter)?;
-
-    // make sure frontmatter is in the expected format
-    for k in frontmatter_value.keys() {
-        match k.as_str() {
-            "date" | "categories" | "author" | "title" => {}
-            key => bail!("Unexpected property `{key}`"),
-        }
-    }
 
     let frontmatter_date = match frontmatter_value
         .shift_remove("date")
@@ -45,21 +40,43 @@ fn main() -> anyhow::Result<()> {
         _ => bail!("frontmatter date is not a string"),
     };
 
-    let date_str = date.clone().unwrap();
-    if !date_str.starts_with(&frontmatter_date) {
-        eprintln!(
+    {
+        let date_str = date.as_ref().unwrap();
+        if !date_str.starts_with(&frontmatter_date) {
+            eprintln!(
             "warning: date mismatch, git date = {date_str}, frontmatter date = {frontmatter_date}"
         );
-        date = None;
-        updated = None;
+            date = None;
+            updated = None;
+        }
     }
-    assert!(date_str.is_ascii());
-    assert!(date_str.len() == "yyyy-mm-dd".len());
-    assert_eq!(date_str.as_bytes()[4], b'-');
-    assert_eq!(date_str.as_bytes()[7], b'-');
-    let year: u8 = date_str[..4].parse().expect("valid year");
-    let month: u8 = date_str[5..7].parse().expect("valid month");
-    let day: u8 = date_str[8..].parse().expect("valid day");
+
+    let title = frontmatter_value["title"]
+        .as_str()
+        .expect("title must be a string")
+        .to_owned();
+
+    let slug = match frontmatter_value.shift_remove("slug") {
+        Some(toml::Value::String(s)) => s,
+        Some(_) => bail!("slug must be a string"),
+        None => title.to_kebab_case(),
+    };
+
+    // check for unexpected frontmatter fields
+    for k in frontmatter_value.keys() {
+        match k.as_str() {
+            "categories" | "author" | "title" => {}
+            key => bail!("Unexpected frontmatter field `{key}`"),
+        }
+    }
+
+    assert!(frontmatter_date.is_ascii());
+    assert_eq!(frontmatter_date.len(), "yyyy-mm-dd".len());
+    assert_eq!(frontmatter_date.as_bytes()[4], b'-');
+    assert_eq!(frontmatter_date.as_bytes()[7], b'-');
+    let year = &frontmatter_date[..4];
+    let month = &frontmatter_date[5..7];
+    let day = &frontmatter_date[8..];
 
     if let Some(ts) = date {
         frontmatter_value.insert("date".to_owned(), utc_iso_date(ts).into());
@@ -75,23 +92,7 @@ fn main() -> anyhow::Result<()> {
 
     let toml_frontmatter = toml::to_string(&frontmatter_value)?;
 
-    let original_filename = input_path
-        .file_name()
-        .unwrap()
-        .to_str()
-        .expect("utf8 file name");
-
-    assert!(original_filename.ends_with(".mdx"));
-
-    let filename_rest = original_filename
-        .strip_prefix(&format!("{year}-{month}-{day}-"))
-        .unwrap_or(original_filename)
-        .strip_suffix('x')
-        .unwrap();
-
-    let output_path = PathBuf::from(format!(
-        "{year}/{month}/{year}-{month}-{day}-{filename_rest}"
-    ));
+    let output_path = PathBuf::from(format!("{year}/{month}/{year}-{month}-{day}-{slug}.md"));
     fs::create_dir_all(output_path.parent().unwrap())?;
 
     let mut writer = BufWriter::new(File::create(output_path)?);
