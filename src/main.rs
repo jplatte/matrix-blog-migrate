@@ -1,8 +1,8 @@
 use std::{
     env,
-    fs::File,
-    io::{BufRead, BufReader},
-    path::Path,
+    fs::{self, File},
+    io::{BufRead, BufReader, BufWriter, Write},
+    path::{Path, PathBuf},
     process,
 };
 
@@ -30,28 +30,39 @@ fn main() -> anyhow::Result<()> {
         serde_yaml::from_str(&yaml_frontmatter)?;
 
     // make sure frontmatter is in the expected format
-    for (k, v) in &frontmatter_value {
+    for k in frontmatter_value.keys() {
         match k.as_str() {
-            "date" => {
-                let v_str = &v.as_str().expect("date must be a string");
-                let date_str = &date.as_ref().unwrap();
-                if !date_str.starts_with(v_str) {
-                    eprintln!(
-                        "warning: date mismatch, git date = {date_str}, frontmatter date = {v_str}"
-                    );
-                    date = None;
-                    updated = None;
-                }
-            }
-            "categories" | "author" | "title" => {}
+            "date" | "categories" | "author" | "title" => {}
             key => bail!("Unexpected property `{key}`"),
         }
     }
 
+    let frontmatter_date = match frontmatter_value
+        .shift_remove("date")
+        .expect("all pages have a date")
+    {
+        toml::Value::String(s) => s,
+        _ => bail!("frontmatter date is not a string"),
+    };
+
+    let date_str = date.clone().unwrap();
+    if !date_str.starts_with(&frontmatter_date) {
+        eprintln!(
+            "warning: date mismatch, git date = {date_str}, frontmatter date = {frontmatter_date}"
+        );
+        date = None;
+        updated = None;
+    }
+    assert!(date_str.is_ascii());
+    assert!(date_str.len() == "yyyy-mm-dd".len());
+    assert_eq!(date_str.as_bytes()[4], b'-');
+    assert_eq!(date_str.as_bytes()[7], b'-');
+    let year: u8 = date_str[..4].parse().expect("valid year");
+    let month: u8 = date_str[5..7].parse().expect("valid month");
+    let day: u8 = date_str[8..].parse().expect("valid day");
+
     if let Some(ts) = date {
         frontmatter_value.insert("date".to_owned(), utc_iso_date(ts).into());
-    } else {
-        frontmatter_value.shift_remove("date");
     }
 
     if let Some(ts) = updated {
@@ -64,7 +75,27 @@ fn main() -> anyhow::Result<()> {
 
     let toml_frontmatter = toml::to_string(&frontmatter_value)?;
 
-    println!("+++\n{toml_frontmatter}+++\n{markdown}");
+    let original_filename = input_path
+        .file_name()
+        .unwrap()
+        .to_str()
+        .expect("utf8 file name");
+
+    assert!(original_filename.ends_with(".mdx"));
+
+    let filename_rest = original_filename
+        .strip_prefix(&format!("{year}-{month}-{day}-"))
+        .unwrap_or(original_filename)
+        .strip_suffix('x')
+        .unwrap();
+
+    let output_path = PathBuf::from(format!(
+        "{year}/{month}/{year}-{month}-{day}-{filename_rest}"
+    ));
+    fs::create_dir_all(output_path.parent().unwrap())?;
+
+    let mut writer = BufWriter::new(File::create(output_path)?);
+    writeln!(writer, "+++\n{toml_frontmatter}+++\n{markdown}")?;
 
     Ok(())
 }
