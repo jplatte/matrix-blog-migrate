@@ -1,0 +1,11 @@
+[package]
+name = "matrix-blog-migrate"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.65"
+itertools = "0.10.5"
+serde_yaml = "0.9.13"
+toml = "0.5.9"
+xshell = "0.1"
