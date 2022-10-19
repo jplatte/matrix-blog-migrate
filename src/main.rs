@@ -46,16 +46,16 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    // rewrite frontmatter structure to match Zola's expectations
-    convert_taxonomy(&mut frontmatter_value, "author", "author")?;
-    convert_taxonomy(&mut frontmatter_value, "categories", "category")?;
-
     if let Some(ts) = date {
         frontmatter_value.insert("date".to_owned(), utc_iso_date(ts).into());
     }
     if let Some(ts) = updated {
         frontmatter_value.insert("updated".to_owned(), utc_iso_date(ts).into());
     }
+
+    // rewrite frontmatter structure to match Zola's expectations
+    convert_taxonomy(&mut frontmatter_value, "author", "author")?;
+    convert_taxonomy(&mut frontmatter_value, "categories", "category")?;
 
     let toml_frontmatter = toml::to_string(&frontmatter_value)?;
 
