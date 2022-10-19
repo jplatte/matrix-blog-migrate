@@ -86,6 +86,11 @@ fn main() -> anyhow::Result<()> {
         frontmatter_value.insert("updated".to_owned(), utc_iso_date(ts).into());
     }
 
+    frontmatter_value.insert(
+        "path".to_owned(),
+        format!("/blog/{year}/{month}/{day}/{slug}").into(),
+    );
+
     // rewrite frontmatter structure to match Zola's expectations
     convert_taxonomy(&mut frontmatter_value, "author", "author")?;
     convert_taxonomy(&mut frontmatter_value, "categories", "category")?;
