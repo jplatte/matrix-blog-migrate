@@ -6,7 +6,7 @@ use std::{
     process,
 };
 
-use anyhow::{bail, ensure};
+use anyhow::bail;
 use itertools::Itertools;
 use toml::value::Table;
 use xshell::{cmd, pushd};
@@ -21,7 +21,8 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
-    let (date, updated) = git_timestamps(input_path)?;
+    let (date, mut updated) = git_timestamps(input_path)?;
+    let mut date = Some(date);
     let (yaml_frontmatter, markdown) = read_file_contents(input_path)?;
 
     let mut frontmatter_value: Table = serde_yaml::from_str(&yaml_frontmatter)?;
@@ -30,10 +31,15 @@ fn main() -> anyhow::Result<()> {
     for (k, v) in &frontmatter_value {
         match k.as_str() {
             "date" => {
-                ensure!(
-                    date.starts_with(v.as_str().expect("date must be a string")),
-                    "date mismatch"
-                );
+                let v_str = &v.as_str().expect("date must be a string");
+                let date_str = &date.as_ref().unwrap();
+                if !date_str.starts_with(v_str) {
+                    eprintln!(
+                        "warning: date mismatch, git date = {date_str}, frontmatter date = {v_str}"
+                    );
+                    date = None;
+                    updated = None;
+                }
             }
             "categories" | "author" | "title" => {}
             key => bail!("Unexpected property `{key}`"),
@@ -44,7 +50,9 @@ fn main() -> anyhow::Result<()> {
     convert_taxonomy(&mut frontmatter_value, "author", "author")?;
     convert_taxonomy(&mut frontmatter_value, "categories", "category")?;
 
-    frontmatter_value.insert("date".to_owned(), utc_iso_date(date).into());
+    if let Some(ts) = date {
+        frontmatter_value.insert("date".to_owned(), utc_iso_date(ts).into());
+    }
     if let Some(ts) = updated {
         frontmatter_value.insert("updated".to_owned(), utc_iso_date(ts).into());
     }
