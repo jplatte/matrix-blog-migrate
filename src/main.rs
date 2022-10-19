@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::bail;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use toml::value::Table;
 use xshell::{cmd, pushd};
@@ -25,7 +26,8 @@ fn main() -> anyhow::Result<()> {
     let mut date = Some(date);
     let (yaml_frontmatter, markdown) = read_file_contents(input_path)?;
 
-    let mut frontmatter_value: Table = serde_yaml::from_str(&yaml_frontmatter)?;
+    let mut frontmatter_value: IndexMap<String, toml::Value> =
+        serde_yaml::from_str(&yaml_frontmatter)?;
 
     // make sure frontmatter is in the expected format
     for (k, v) in &frontmatter_value {
@@ -48,7 +50,10 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(ts) = date {
         frontmatter_value.insert("date".to_owned(), utc_iso_date(ts).into());
+    } else {
+        frontmatter_value.shift_remove("date");
     }
+
     if let Some(ts) = updated {
         frontmatter_value.insert("updated".to_owned(), utc_iso_date(ts).into());
     }
@@ -57,9 +62,9 @@ fn main() -> anyhow::Result<()> {
     convert_taxonomy(&mut frontmatter_value, "author", "author")?;
     convert_taxonomy(&mut frontmatter_value, "categories", "category")?;
 
-    let toml_frontmatter = toml::to_string(&frontmatter_value)?;
+    let toml_frontmatter = toml::to_string(&dbg!(frontmatter_value))?;
 
-    println!("+++\n{toml_frontmatter}\n+++\n{markdown}");
+    println!("+++\n{toml_frontmatter}+++\n{markdown}");
 
     Ok(())
 }
@@ -108,13 +113,13 @@ fn read_file_contents(input_path: &Path) -> anyhow::Result<(String, String)> {
 }
 
 fn convert_taxonomy(
-    frontmatter_value: &mut toml::value::Map<String, toml::Value>,
+    frontmatter_value: &mut IndexMap<String, toml::Value>,
     old_key: &str,
     new_key: &str,
 ) -> anyhow::Result<()> {
     if let Some(mut value) = frontmatter_value.remove(old_key) {
         let table = frontmatter_value
-            .entry("taxonomies")
+            .entry("taxonomies".to_owned())
             .or_insert_with(|| toml::Value::Table(Table::new()))
             .as_table_mut()
             .unwrap();
