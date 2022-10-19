@@ -16,14 +16,15 @@ use xshell::{cmd, pushd};
 fn main() -> anyhow::Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
     let input_path = match args.as_slice() {
-        [input] => Path::new(input),
+        [input] => {
+            assert!(input.ends_with(".mdx"));
+            Path::new(input)
+        }
         _ => {
             eprintln!("must receive exactly one command line argument (input file)");
             process::exit(1);
         }
     };
-
-    assert!(input_path.ends_with(".mdx"));
 
     let (date, mut updated) = git_timestamps(input_path)?;
     let mut date = Some(date);
