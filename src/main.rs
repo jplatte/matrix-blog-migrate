@@ -155,7 +155,7 @@ fn convert_taxonomy(
     old_key: &str,
     new_key: &str,
 ) -> anyhow::Result<()> {
-    if let Some(mut value) = frontmatter_value.remove(old_key) {
+    if let Some(mut value) = frontmatter_value.shift_remove(old_key) {
         let table = frontmatter_value
             .entry("taxonomies".to_owned())
             .or_insert_with(|| toml::Value::Table(Table::new()))
