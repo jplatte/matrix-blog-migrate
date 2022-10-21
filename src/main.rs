@@ -6,7 +6,7 @@ use std::{
     process,
 };
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use heck::ToKebabCase;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -31,7 +31,8 @@ fn main() -> anyhow::Result<()> {
     let (yaml_frontmatter, markdown) = read_file_contents(input_path)?;
 
     let mut frontmatter_value: IndexMap<String, toml::Value> =
-        serde_yaml::from_str(&yaml_frontmatter)?;
+        serde_yaml::from_str(&yaml_frontmatter)
+            .with_context(|| format!("reading frontmatter of `{}`", input_path.display()))?;
 
     let frontmatter_date = match frontmatter_value
         .shift_remove("date")
@@ -44,9 +45,6 @@ fn main() -> anyhow::Result<()> {
     {
         let date_str = date.as_ref().unwrap();
         if !date_str.starts_with(&frontmatter_date) {
-            eprintln!(
-            "warning: date mismatch, git date = {date_str}, frontmatter date = {frontmatter_date}"
-        );
             date = None;
             updated = None;
         }
@@ -66,7 +64,7 @@ fn main() -> anyhow::Result<()> {
     // check for unexpected frontmatter fields
     for k in frontmatter_value.keys() {
         match k.as_str() {
-            "categories" | "author" | "title" => {}
+            "categories" | "author" | "title" | "image" => {}
             key => bail!("Unexpected frontmatter field `{key}`"),
         }
     }
@@ -96,7 +94,22 @@ fn main() -> anyhow::Result<()> {
     convert_taxonomy(&mut frontmatter_value, "author", "author")?;
     convert_taxonomy(&mut frontmatter_value, "categories", "category")?;
 
-    let toml_frontmatter = toml::to_string(&frontmatter_value)?;
+    if let Some(value) = frontmatter_value.shift_remove("image") {
+        let table = frontmatter_value
+            .entry("extra".to_owned())
+            .or_insert_with(|| toml::Value::Table(Table::new()))
+            .as_table_mut()
+            .unwrap();
+
+        if !value.is_str() {
+            bail!("Unexpected value for `image`: {value:?}");
+        }
+
+        table.insert("image".to_owned(), value);
+    }
+
+    let toml_frontmatter =
+        toml::to_string(&frontmatter_value).context("serializing frontmatter")?;
 
     let output_path = PathBuf::from(format!("{year}/{month}/{year}-{month}-{day}-{slug}.md"));
     fs::create_dir_all(output_path.parent().unwrap())?;
